@@ -1,9 +1,10 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
+import datetime
 import os
 import socket
+from base64 import b64decode
 from threading import Thread
-import datetime
 
 MIME_TYPES = {
     "gif": "image/gif",
@@ -12,9 +13,16 @@ MIME_TYPES = {
     "tiff": "image/tiff",
     "pdf": "application/pdf",
     "webm": "video/webm",
+    "txt": "text/plain",
 }
 
 DATA_SIZE = 16384
+REALM = "arsel.muginov@gmail.com"
+
+AUTH_BASE = {
+    "arsel": "123",
+    "bob": "alice",
+}
 
 class Query:
     def __init__(self, data):
@@ -38,11 +46,21 @@ class Query:
         self.headers = {k: v for [k, v] in [header.split(':', 1) for header in headers[1:]]}
         self.content = content
 
+    def authenticated(self):
+        if 'Authorization' in self.headers:
+            auth_type, encoded = self.headers['Authorization'].split(' ')[-2:]
+            if auth_type == 'Basic':
+                user, password = b64decode(encoded.encode('utf-8')).decode('utf-8').split(':', 1)
+                if user in AUTH_BASE and AUTH_BASE[user] == password:
+                    return True
+        return False
+
 
 class Response:
     def __init__(self, type):
         self.main_header = "HTTP/1.1 %d" % type
         self.headers = []
+        self.content = None
 
     def add_header(self, key, value):
         self.headers.append("%s:%s" % (key, value))
@@ -78,34 +96,39 @@ def main():
 
 
 def client_handle(client, address):
-    while True:
-        try:
-            query = Query(client.recv(DATA_SIZE).decode('utf-8'))
+    try:
+        query = Query(client.recv(DATA_SIZE).decode('utf-8'))
 
-            if query.empty:
-                return
+        if query.empty:
+            return
 
-            log("RECV : %s" % query.headers_raw.replace('\r\n', ' | '))
+        log("RECV : %s" % query.headers_raw.replace('\r\n', ' | '))
 
+        if query.authenticated():
             if os.path.exists(query.main_header["path"]):
                 response = Response(200)
                 response.add_content(query.main_header["path"])
-                response.add_header("Connection", "keep-alive")
             else:
                 return
+        else:
+            response = Response(401)
+            response.add_header('WWW-Authenticate', 'Basic realm="%s"' % REALM)
 
-            headers, content = response.respond()
-            client.send(headers)
-            client.send(content)
-            log("SENT : %s" % headers.decode('utf-8').replace('\r\n', ' | '))
+        headers, content = response.respond()
+        client.send(headers)
+        client.send(content)
+        log("SENT : %s" % headers.decode('utf-8').replace('\r\n', ' | '))
+        client.close()
 
-        except Exception as e:
-            client.close()
-            log("EXC : %s" % e)
-            return False
+    except Exception as e:
+        client.close()
+        log("EXC : %s" % e)
+        return False
+
 
 def log(msg):
     print("[%s] %s" % (datetime.datetime.now(), msg))
+
 
 if __name__ == "__main__":
     main()
