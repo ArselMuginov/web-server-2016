@@ -123,7 +123,6 @@ def client_handle(client, address):
     except Exception as e:
         client.close()
         log("EXC : %s" % e)
-        return False
 
 
 def log(msg):
