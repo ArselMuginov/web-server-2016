@@ -1,5 +1,10 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
+
+"""
+TCP server with basic authentication
+"""
+
 import datetime
 import os
 import socket
@@ -7,13 +12,13 @@ from base64 import b64decode
 from threading import Thread
 
 MIME_TYPES = {
-    "gif": "image/gif",
-    "jpeg": "image/jpeg",
-    "png": "image/png",
-    "tiff": "image/tiff",
-    "pdf": "application/pdf",
-    "webm": "video/webm",
-    "txt": "text/plain",
+    ".gif": "image/gif",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".tiff": "image/tiff",
+    ".pdf": "application/pdf",
+    ".webm": "video/webm",
+    ".txt": "text/plain",
 }
 
 DATA_SIZE = 16384
@@ -24,8 +29,16 @@ AUTH_BASE = {
     "bob": "alice",
 }
 
+
 class Query:
+    """
+    Represents a query that server receives from the client
+    """
     def __init__(self, data):
+        """
+        Creates a query by parsing headers and content from received data
+        :param data: received information from the client, text with CRLF separators
+        """
         if len(data) == 0:
             self.empty = True
             return
@@ -47,6 +60,11 @@ class Query:
         self.content = content
 
     def authenticated(self):
+        """
+        Checks if the client is authenticated.
+        Basic authentication is used.
+        :return: True if the client is authenticated and False for opposite
+        """
         if 'Authorization' in self.headers:
             auth_type, encoded = self.headers['Authorization'].split(' ')[-2:]
             if auth_type == 'Basic':
@@ -57,15 +75,30 @@ class Query:
 
 
 class Response:
-    def __init__(self, type):
-        self.main_header = "HTTP/1.1 %d" % type
+    """
+    Represents a response that server sends to the client
+    """
+    def __init__(self, status_code):
+        """
+        Creates a response using a status code
+        :param status_code: HTTP response status code
+        """
+        self.main_header = "HTTP/1.1 %d" % status_code
         self.headers = []
         self.content = None
 
     def add_header(self, key, value):
-        self.headers.append("%s:%s" % (key, value))
+        """
+        Adds a header in response with format <key>: <value>
+        """
+        self.headers.append("%s: %s" % (key, value))
 
     def add_content(self, filename):
+        """
+        Adds a content in response in binary format.
+        It is guaranteed that the file exists.
+        :param filename: path to the file starting from server root
+        """
         file = open(filename, "rb")
         self.content = file.read()
         file.close()
@@ -78,6 +111,11 @@ class Response:
         self.add_header("Content-size", len(self.content))
 
     def respond(self):
+        """
+        Transforms all headers to a string in binary,
+        then sends it with the content
+        :return: two strings in binary: headers and a content
+        """
         all_headers = self.main_header + "\r\n"
         for h in self.headers:
             all_headers += "%s\r\n" % h
@@ -85,17 +123,21 @@ class Response:
         return all_headers.encode('utf-8'), self.content
 
 
-def main():
-    sock = socket.socket()
-    sock.bind(("", 8000))
-    sock.listen(10)
-
-    while True:
-        client, address = sock.accept()
-        Thread(target=client_handle, args=(client, address)).start()
+def log(msg):
+    """
+    Prints a message about server work with reference to the time.
+    :param msg: message that needs to be printed
+    """
+    print("[%s] %s" % (datetime.datetime.now(), msg))
 
 
 def client_handle(client, address):
+    """
+    Handles the work with the client:
+    receives data, processes it, and sends the result back.
+    :param client: socket representing the connection
+    :param address: address of the client
+    """
     try:
         query = Query(client.recv(DATA_SIZE).decode('utf-8'))
 
@@ -125,8 +167,20 @@ def client_handle(client, address):
         log("EXC : %s" % e)
 
 
-def log(msg):
-    print("[%s] %s" % (datetime.datetime.now(), msg))
+def main():
+    """
+    Entry point.
+    Creates socket and waits for the client in a loop.
+    When a client connects, its handling is performed in another thread.
+    That allows handling multiple clients.
+    """
+    sock = socket.socket()
+    sock.bind(("", 8000))
+    sock.listen(10)
+
+    while True:
+        client, address = sock.accept()
+        Thread(target=client_handle, args=(client, address)).start()
 
 
 if __name__ == "__main__":
