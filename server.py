@@ -23,6 +23,8 @@ MIME_TYPES = {
 
 DATA_SIZE = 16384
 REALM = "arsel.muginov@gmail.com"
+PORT = 8000
+MAX_CLIENTS = 10
 
 AUTH_BASE = {
     "arsel": "123",
@@ -49,11 +51,11 @@ class Query:
         self.headers_raw = headers
         headers = headers.split('\r\n')
 
-        main_header = headers[0].split(' ')
-        self.main_header = {
-            "method": main_header[0],
-            "path": main_header[1][1:] if main_header[1] != "/" else "server.html",
-            "protocol": main_header[2],
+        start_string = headers[0].split(' ')
+        self.start_string = {
+            "method": start_string[0],
+            "path": start_string[1][1:] if start_string[1] != "/" else "server.html",
+            "protocol": start_string[2],
         }
 
         self.headers = {k: v for [k, v] in [header.split(':', 1) for header in headers[1:]]}
@@ -147,11 +149,12 @@ def client_handle(client, address):
         log("RECV : %s" % query.headers_raw.replace('\r\n', ' | '))
 
         if query.authenticated():
-            if os.path.exists(query.main_header["path"]):
+            if os.path.exists(query.start_string["path"]):
                 response = Response(200)
-                response.add_content(query.main_header["path"])
+                response.add_content(query.start_string["path"])
             else:
-                return
+                response = Response(404)
+                response.add_content("404.html")
         else:
             response = Response(401)
             response.add_header('WWW-Authenticate', 'Basic realm="%s"' % REALM)
@@ -175,8 +178,8 @@ def main():
     That allows handling multiple clients.
     """
     sock = socket.socket()
-    sock.bind(("", 8000))
-    sock.listen(10)
+    sock.bind(("", PORT))
+    sock.listen(MAX_CLIENTS)
 
     while True:
         client, address = sock.accept()

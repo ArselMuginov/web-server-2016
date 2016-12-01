@@ -29,6 +29,8 @@ AUTH_BASE = {
 
 DATA_SIZE = 16384
 REALM = "arsel.muginov@gmail.com"
+PORT = 8000
+MAX_CLIENTS = 10
 
 PAGES = {
     "root": "server.html",
@@ -101,11 +103,11 @@ class Query:
         self.headers_raw = headers
         headers = headers.split('\r\n')
 
-        main_header = headers[0].split(' ')
-        self.main_header = {
-            "method": main_header[0],
-            "path": main_header[1][1:],
-            "protocol": main_header[2],
+        start_string = headers[0].split(' ')
+        self.start_string = {
+            "method": start_string[0],
+            "path": start_string[1][1:],
+            "protocol": start_string[2],
         }
 
         self.headers = {k: v for [k, v] in [header.split(': ', 1) for header in headers[1:]]}
@@ -113,7 +115,7 @@ class Query:
 
     def resolve_path(self):
         """
-        Resolves path from main_header:
+        Resolves path from start_string:
         for root path replaces it with root page;
         for get method replaces it with requested method;
         for server file replaces it with path to the file.
@@ -121,13 +123,13 @@ class Query:
         :return: a tuple where first means path to the file or method pointer
                  second is used in method only: get parameters from a form
         """
-        path = self.main_header["path"]
+        path = self.start_string["path"]
 
         if path == "":
             return PAGES["root"], None
 
         try:
-            iterator = CLASS_REGISTRY[self.main_header["method"]]
+            iterator = CLASS_REGISTRY[self.start_string["method"]]
             clean_path, params = path.split('?', 1)
             for subpath in clean_path.split('/'):
                 iterator = getattr(iterator, subpath)
@@ -268,8 +270,8 @@ def main():
     That allows handling multiple clients.
     """
     sock = socket.socket()
-    sock.bind(("", 8000))
-    sock.listen(10)
+    sock.bind(("", PORT))
+    sock.listen(MAX_CLIENTS)
 
     while True:
         client, address = sock.accept()
